@@ -1,0 +1,19 @@
+name: Mirror to GitLab
+on: 
+  push:
+  delete:
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    environment: Mirror
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitLab Mirror
+        run: |
+          git remote add gitlab https://lmalheir:${{ secrets.GITLAB_TOKEN }}@gitlab.com/lmalheir/dowload-talkguest-data.git
+          git push gitlab "refs/heads/*:refs/heads/*" "refs/tags/*:refs/tags/*" --force
