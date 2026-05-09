@@ -142,6 +142,7 @@
                     // Calculate Profit and Comissão de Gestão
                     let valorDaReservaNum = 0;
                     let comissoesETaxasNum = 0;
+                    let cleaningFeeNum = 0;
 
                     for (const [key, valStr] of Object.entries(rowInfo.extraData)) {
                         const valNum = parseFloat(valStr.replace(/[€\s]/g, '').replace(/\./g, '').replace(',', '.'));
@@ -152,12 +153,20 @@
                             } else if (keyLower.includes('comissão do canal') || keyLower.includes('comissao do canal') ||
                                        keyLower.includes('comissão de pagamento') || keyLower.includes('comissao de pagamento')) {
                                 comissoesETaxasNum += valNum;
+                            } else if (keyLower.includes('cleaning fee') || keyLower.includes('limpeza')) {
+                                cleaningFeeNum += valNum;
                             }
                         }
                     }
 
-                    // Profit = Valor da Reserva - (Comissions + Taxes from tooltip + calculated IVA)
-                    const profitNum = valorDaReservaNum - comissoesETaxasNum - ivaNum;
+                    let ivaCleaningFeeNum = 0;
+                    if (cleaningFeeNum !== 0) {
+                        ivaCleaningFeeNum = cleaningFeeNum - (cleaningFeeNum / 1.06);
+                    }
+
+                    // Profit = Valor da Reserva - (Comissions + Taxes from tooltip + calculated IVA) + IVA da Cleaning Fee
+                    // (porque a base de comissão de gestão não desconta o IVA da taxa de limpeza)
+                    const profitNum = valorDaReservaNum - comissoesETaxasNum - ivaNum + ivaCleaningFeeNum;
                     const comissaoGestaoNum = profitNum * 0.30;
 
                     const profitStr = `€ ${profitNum.toFixed(2).replace('.', ',')}`;
