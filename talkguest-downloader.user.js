@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Talkguest Table Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Download reservations table to XLSX with formulas
 // @author       You
 // @match        https://owner.talkguest.com/Bookings/OwnerArea.aspx*
@@ -77,7 +77,7 @@
                                 const descLower = desc.toLowerCase();
 
                                 if (descLower.startsWith('reservation')) {
-                                    keyName = 'Valor da Reserva';
+                                    keyName = 'Vendas';
                                 }
 
                                 rowInfo.extraData[keyName] = val;
@@ -105,11 +105,20 @@
             allRowsData.push(rowInfo);
         }
 
-        const extraColumnsArray = Array.from(extraColumnNames);
-        if (!extraColumnsArray.includes('Valor da Reserva')) {
-            extraColumnsArray.unshift('Valor da Reserva');
+        const extraColumnsArray = Array.from(extraColumnNames).filter(name => name !== 'Vendas');
+        if (!extraColumnsArray.includes('Vendas')) {
+            extraColumnsArray.unshift('Vendas');
         }
-        const finalHeaders = [...baseHeaderNames, 'IVA (6%)', ...extraColumnsArray, 'Lucro / Profit', 'Comissão de Gestão (30%)', 'Total Final'];
+        const finalHeaders = [
+            ...baseHeaderNames,
+            'IVA (6%)',
+            ...extraColumnsArray,
+            'Comissão de Gestão (30%)',
+            'Total Final',
+            'Despesas Proprietário',
+            'Despesas ORM',
+            'Total a Transferir'
+        ];
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Reservations');
@@ -134,6 +143,34 @@
             return isNaN(num) ? 0 : num;
         }
 
+        function parseDate(val) {
+            if (!val) return new Date(8640000000000000);
+            const parts = String(val).trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+            if (parts) {
+                return new Date(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]));
+            }
+            const parsed = new Date(val);
+            return isNaN(parsed.getTime()) ? new Date(8640000000000000) : parsed;
+        }
+
+        const checkoutColIndex = baseHeaderNames.findIndex(name => {
+            const normalized = name.toLowerCase().replace(/\s+/g, '');
+            return normalized === 'check-out' || normalized === 'checkout';
+        });
+
+        if (checkoutColIndex >= 0) {
+            allRowsData.sort((a, b) => parseDate(a.baseData[checkoutColIndex]) - parseDate(b.baseData[checkoutColIndex]));
+        }
+
+        const formula = (expression, result) => {
+            const value = { formula: expression };
+            if (typeof result === 'number' && isFinite(result)) {
+                value.result = result;
+            }
+            return value;
+        };
+        const totalsByColumn = new Array(finalHeaders.length).fill(0);
+
         for (let i = 0; i < allRowsData.length; i++) {
             const rowInfo = allRowsData[i];
             const rowNum = i + 2;
@@ -150,43 +187,54 @@
                 rowValues.push(val);
             }
 
-            // IVA (6%)
-            let ivaFormula;
             const totalColLetter = getColLetter(rowInfo.totalColIndex);
-            if (rowInfo.foundIncomeItem) {
-                const incomeCols = [];
+
+            const getExtraCols = matcher => {
+                const cols = [];
                 for (let c = 0; c < extraColumnsArray.length; c++) {
-                    const colName = extraColumnsArray[c].toLowerCase();
-                    if (colName === 'valor da reserva' || colName.includes('cleaning fee') || colName.includes('limpeza')) {
-                        incomeCols.push(getColLetter(baseHeaderNames.length + 1 + c));
+                    if (matcher(extraColumnsArray[c].toLowerCase())) {
+                        cols.push(getColLetter(baseHeaderNames.length + 1 + c));
                     }
                 }
-                const sumStr = incomeCols.length > 0 ? `SUM(${incomeCols.map(c => c+rowNum).join(',')})` : '0';
-                ivaFormula = `=${sumStr} - (${sumStr})/1.06`;
-            } else {
-                ivaFormula = `=${totalColLetter}${rowNum} - ${totalColLetter}${rowNum}/1.06`;
-            }
-            rowValues.push({ formula: ivaFormula });
+                return cols;
+            };
+
+            const sumExpr = cols => cols.length > 0 ? `SUM(${cols.map(c => c + rowNum).join(',')})` : '0';
+            const taxaCols = getExtraCols(name => name.includes('taxa municipal') || name.includes('city tax') || name.includes('taxa turística') || name.includes('taxa turistica'));
+            const cleaningCols = getExtraCols(name => name.includes('cleaning fee') || name.includes('limpeza'));
+            const channelCommissionCols = getExtraCols(name => name.includes('comissão do canal') || name.includes('comissao do canal'));
+            const paymentCommissionCols = getExtraCols(name => name.includes('comissão de pagamento') || name.includes('comissao de pagamento'));
+            const vendasCols = getExtraCols(name => name === 'vendas');
+
+            const taxaExpr = sumExpr(taxaCols);
+            const cleaningExpr = sumExpr(cleaningCols);
+            const revenueBaseExpr = `(${totalColLetter}${rowNum} - ${taxaExpr} - ${cleaningExpr})`;
+
+            const sumExtraValues = matcher => extraColumnsArray.reduce((sum, colName) => {
+                return matcher(colName.toLowerCase()) ? sum + parseNum(rowInfo.extraData[colName]) : sum;
+            }, 0);
+            const totalValue = parseNum(rowInfo.baseData[rowInfo.totalColIndex]);
+            const taxaValue = sumExtraValues(name => name.includes('taxa municipal') || name.includes('city tax') || name.includes('taxa turística') || name.includes('taxa turistica'));
+            const cleaningValue = sumExtraValues(name => name.includes('cleaning fee') || name.includes('limpeza'));
+            const channelCommissionValue = sumExtraValues(name => name.includes('comissão do canal') || name.includes('comissao do canal'));
+            const paymentCommissionValue = sumExtraValues(name => name.includes('comissão de pagamento') || name.includes('comissao de pagamento'));
+            const revenueBaseValue = totalValue - taxaValue - cleaningValue;
+            const ivaValue = revenueBaseValue - revenueBaseValue / 1.06;
+            const vendasValue = revenueBaseValue / 1.06 - channelCommissionValue - paymentCommissionValue;
+            const managementCommissionValue = vendasValue * 0.30;
+            const totalFinalValue = vendasValue - managementCommissionValue;
+
+            // IVA (6%) included in Vendas base, excluding city tax and cleaning fees.
+            rowValues.push(formula(`${revenueBaseExpr} - (${revenueBaseExpr})/1.06`, ivaValue));
 
             // Extra columns
             for (let c = 0; c < extraColumnsArray.length; c++) {
                 const colName = extraColumnsArray[c];
 
-                if (colName === 'Valor da Reserva') {
-                    const totalColLetter = getColLetter(rowInfo.totalColIndex);
-                    const taxaCols = [];
-                    for (let k = 0; k < extraColumnsArray.length; k++) {
-                        const lowerName = extraColumnsArray[k].toLowerCase();
-                        if (lowerName.includes('taxa municipal') || lowerName.includes('city tax') || lowerName.includes('taxa turística') || lowerName.includes('taxa turistica')) {
-                            taxaCols.push(getColLetter(baseHeaderNames.length + 1 + k));
-                        }
-                    }
-                    if (taxaCols.length > 0) {
-                        const taxaSumExpr = taxaCols.length > 1 ? `SUM(${taxaCols.map(tc => tc+rowNum).join(',')})` : `${taxaCols[0]}${rowNum}`;
-                        rowValues.push({ formula: `=${totalColLetter}${rowNum} - ${taxaSumExpr}` });
-                    } else {
-                        rowValues.push({ formula: `=${totalColLetter}${rowNum}` });
-                    }
+                if (colName === 'Vendas') {
+                    const channelCommissionExpr = sumExpr(channelCommissionCols);
+                    const paymentCommissionExpr = sumExpr(paymentCommissionCols);
+                    rowValues.push(formula(`${revenueBaseExpr}/1.06 - ${channelCommissionExpr} - ${paymentCommissionExpr}`, vendasValue));
                 } else {
                     let val = rowInfo.extraData[colName];
                     if (val === undefined || val === null) {
@@ -204,37 +252,26 @@
                 }
             }
 
-            // Formulas for Profit, Comissão, Total
-            const colValorReserva = [];
-            const colComissoes = [];
-            const colCleaningFee = [];
-            for (let c = 0; c < extraColumnsArray.length; c++) {
-                const colName = extraColumnsArray[c].toLowerCase();
-                const letter = getColLetter(baseHeaderNames.length + 1 + c);
-                if (colName === 'valor da reserva') colValorReserva.push(letter);
-                else if (colName.includes('comissão do canal') || colName.includes('comissao do canal') || colName.includes('comissão de pagamento') || colName.includes('comissao de pagamento')) colComissoes.push(letter);
-                else if (colName.includes('cleaning fee') || colName.includes('limpeza')) colCleaningFee.push(letter);
-            }
+            // Formulas for Comissão de Gestão and Total, based on Vendas.
+            const vendasExpr = vendasCols.length > 0 ? `${vendasCols[0]}${rowNum}` : '0';
+            rowValues.push(formula(`${vendasExpr}*0.30`, managementCommissionValue));
 
-            const sumExpr = (cols) => cols.length > 0 ? `SUM(${cols.map(c => c+rowNum).join(',')})` : '0';
-            const vrExpr = sumExpr(colValorReserva);
-            const comExpr = sumExpr(colComissoes);
-            const ivaCell = getColLetter(baseHeaderNames.length) + rowNum;
-            const cfExpr = sumExpr(colCleaningFee);
-            const ivaCfExpr = cfExpr === '0' ? '0' : `(${cfExpr} - (${cfExpr})/1.06)`;
+            const comissaoColLetter = getColLetter(baseHeaderNames.length + 1 + extraColumnsArray.length);
+            rowValues.push(formula(`${vendasExpr} - ${comissaoColLetter}${rowNum}`, totalFinalValue));
 
-            const profitFormula = `=${vrExpr} - ${comExpr} - SUM(${ivaCell}) + ${ivaCfExpr}`;
-            rowValues.push({ formula: profitFormula });
-
-            const profitColLetter = getColLetter(baseHeaderNames.length + 1 + extraColumnsArray.length);
-            const comissaoFormula = `=${profitColLetter}${rowNum}*0.30`;
-            rowValues.push({ formula: comissaoFormula });
-
-            const comissaoColLetter = getColLetter(baseHeaderNames.length + 1 + extraColumnsArray.length + 1);
-            const totalFormula = `=${profitColLetter}${rowNum} - ${comissaoColLetter}${rowNum}`;
-            rowValues.push({ formula: totalFormula });
+            rowValues.push("");
+            rowValues.push("");
+            rowValues.push("");
 
             const wsRow = worksheet.addRow(rowValues);
+
+            rowValues.forEach((value, index) => {
+                if (typeof value === 'number') {
+                    totalsByColumn[index] += value;
+                } else if (value && typeof value.result === 'number') {
+                    totalsByColumn[index] += value.result;
+                }
+            });
 
             wsRow.eachCell((cell, colNumber) => {
                 const colIndex = colNumber - 1;
@@ -254,11 +291,43 @@
         const totalsRowNum = allRowsData.length + 2;
         const totalsValues = new Array(finalHeaders.length).fill("");
         totalsValues[0] = "TOTAL GERAL";
-        const totalFinalColLetter = getColLetter(finalHeaders.length - 1);
-        totalsValues[finalHeaders.length - 1] = { formula: `=SUM(${totalFinalColLetter}2:${totalFinalColLetter}${totalsRowNum-1})` };
+        for (let colIndex = 0; colIndex < finalHeaders.length; colIndex++) {
+            const header = String(finalHeaders[colIndex]).toLowerCase();
+            const shouldTotal = header === 'vendas' ||
+                                header.includes('comissão') ||
+                                header.includes('comissao') ||
+                                header === 'total final';
+            if (shouldTotal) {
+                const colLetter = getColLetter(colIndex);
+                totalsValues[colIndex] = formula(`SUM(${colLetter}2:${colLetter}${totalsRowNum-1})`, totalsByColumn[colIndex]);
+            }
+        }
+        const totalFinalIndex = finalHeaders.indexOf('Total Final');
+        const despesasProprietarioIndex = finalHeaders.indexOf('Despesas Proprietário');
+        const despesasOrmIndex = finalHeaders.indexOf('Despesas ORM');
+        const totalTransferirIndex = finalHeaders.indexOf('Total a Transferir');
+        if (despesasProprietarioIndex >= 0) {
+            totalsValues[despesasProprietarioIndex] = 0;
+        }
+        if (despesasOrmIndex >= 0) {
+            totalsValues[despesasOrmIndex] = 0;
+        }
+        if (totalFinalIndex >= 0 && despesasProprietarioIndex >= 0 && despesasOrmIndex >= 0 && totalTransferirIndex >= 0) {
+            const totalFinalCell = `${getColLetter(totalFinalIndex)}${totalsRowNum}`;
+            const despesasProprietarioCell = `${getColLetter(despesasProprietarioIndex)}${totalsRowNum}`;
+            const despesasOrmCell = `${getColLetter(despesasOrmIndex)}${totalsRowNum}`;
+            totalsValues[totalTransferirIndex] = formula(
+                `${totalFinalCell} - ${despesasProprietarioCell} - ${despesasOrmCell}`,
+                totalsByColumn[totalFinalIndex]
+            );
+        }
 
         const totalsRow = worksheet.addRow(totalsValues);
-        totalsRow.getCell(finalHeaders.length).numFmt = '#,##0.00" €"';
+        for (let colIndex = 0; colIndex < finalHeaders.length; colIndex++) {
+            if (totalsValues[colIndex] && typeof totalsValues[colIndex].result === 'number') {
+                totalsRow.getCell(colIndex + 1).numFmt = '#,##0.00" €"';
+            }
+        }
         totalsRow.font = { bold: true };
 
         btn.innerText = originalText;

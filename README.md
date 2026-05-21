@@ -1,18 +1,20 @@
 # Talkguest Table Downloader
 
-A Tampermonkey userscript that adds a "Download CSV" button to the Talkguest Owner portal. This script extracts reservation data, including detailed fee breakdowns from tooltips, and automatically calculates the profit, management commission, and final totals.
+A Tampermonkey userscript that adds a "Download XLSX" button to the Talkguest Owner portal. This script extracts reservation data, including detailed fee breakdowns from tooltips, and automatically calculates Vendas, management commission, and final totals.
 
 ## Features
 
-- **One-Click Export**: Adds a floating "Download CSV" button to the reservations page.
+- **One-Click Export**: Adds a floating "Download XLSX" button to the reservations page.
 - **Tooltip Extraction**: Automatically hovers over reservation "i" icons to dynamically extract hidden line items (such as `Taxa Municipal Turística`, `Cleaning Fee`, `Comissão do canal`, `Comissão de pagamento`, etc.) into dynamic columns.
-- **IVA Calculation**: Computes the included 6% IVA on the reservation base value.
-- **Profit & Commission Calculations**:
-  - **Profit / Lucro**: Calculated as the `Valor da Reserva` minus specific expenses (`Comissão do canal` and `Comissão de pagamento`) and minus the calculated 6% IVA. Note: `Taxa Municipal Turística` and `Cleaning Fees` are strictly excluded from the expense deduction.
-  - **Comissão de Gestão (30%)**: Automatically calculated as 30% of the Profit.
-  - **Total Final**: The remaining value after deducting the management commission from the profit (`Profit` - `Comissão de Gestão`).
-- **Totals Row**: Automatically appends a `TOTAL GERAL` row at the very bottom of the CSV to sum up the Final Totals for the visible page.
-- **Excel Compatibility**: Adds a UTF-8 BOM so the generated CSV opens cleanly in Microsoft Excel without character encoding issues (preserving accents like 'ç' and 'ã').
+- **Checkout Sorting**: Sorts exported reservations by checkout date in ascending order.
+- **IVA Calculation**: Computes the included 6% IVA on the Vendas base, excluding city tax and cleaning fees.
+- **Vendas & Commission Calculations**:
+  - **Vendas**: Calculated from the displayed total minus city tax and cleaning fees, with included 6% IVA removed, then minus `Comissão do canal` and `Comissão de pagamento`.
+  - **Comissão de Gestão (30%)**: Automatically calculated as 30% of `Vendas`.
+  - **Total Final**: The remaining value after deducting the management commission from `Vendas`.
+  - **Despesas Proprietário / Despesas ORM**: Summary expense columns initialized to `0` on the totals row.
+  - **Total a Transferir**: Calculated on the totals row as `Total Final - Despesas Proprietário - Despesas ORM`.
+- **Totals Row**: Automatically appends a `TOTAL GERAL` row at the very bottom of the XLSX to sum up Vendas, expenses, commission, final total, and transfer columns for the visible page.
 
 ## Installation
 
@@ -25,9 +27,9 @@ A Tampermonkey userscript that adds a "Download CSV" button to the Talkguest Own
 
 1. Log in to your Talkguest account.
 2. Navigate to the Owner Area Bookings page (`https://owner.talkguest.com/Bookings/OwnerArea.aspx*`).
-3. Once the page loads, you should see a blue **Download CSV** button in the bottom right corner of the screen.
+3. Once the page loads, you should see a blue **Download XLSX** button in the bottom right corner of the screen.
 4. Click the button. The button text will change to "Loading details..." as it simulates hovering over the tooltips to load the full breakdown data (this may take a few seconds depending on how many reservations are visible).
-5. Once complete, a `.csv` file will be downloaded to your computer automatically, timestamped with the current date (e.g., `talkguest_reservations_YYYY-MM-DD.csv`).
+5. Once complete, a `.xlsx` file will be downloaded to your computer automatically, timestamped with the current date (e.g., `talkguest_reservations_YYYY-MM-DD.xlsx`).
 
 ## Technical Details
 
