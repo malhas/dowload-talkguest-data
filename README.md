@@ -19,9 +19,12 @@ A Tampermonkey userscript that adds a "Download XLSX" button to the Talkguest Ow
 ## Installation
 
 1. Install the [Tampermonkey](https://www.tampermonkey.net/) extension for your browser (Chrome, Firefox, Safari, Edge).
-2. Open the Tampermonkey dashboard and click on **Add a new script**.
-3. Copy the entire contents of `talkguest-downloader.user.js` and paste it into the editor, completely replacing any default template code.
-4. Save the script (`File` -> `Save`, or `Ctrl+S` / `Cmd+S`).
+2. Open the raw userscript URL: [talkguest-downloader.user.js](https://raw.githubusercontent.com/malhas/dowload-talkguest-data/main/talkguest-downloader.user.js).
+3. Tampermonkey should detect the userscript and open an installation screen. Click **Install**.
+
+## Updates
+
+The userscript metadata points Tampermonkey at the GitHub version in `malhas/dowload-talkguest-data`, so Tampermonkey can automatically check for and install newer versions when the script version changes.
 
 ## Usage
 

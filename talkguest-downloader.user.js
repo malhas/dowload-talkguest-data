@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Talkguest Table Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      1.0
 // @description  Download reservations table to XLSX with formulas
 // @author       You
 // @match        https://owner.talkguest.com/Bookings/OwnerArea.aspx*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js
+// @updateURL    https://raw.githubusercontent.com/malhas/dowload-talkguest-data/main/talkguest-downloader.user.js
+// @downloadURL  https://raw.githubusercontent.com/malhas/dowload-talkguest-data/main/talkguest-downloader.user.js
 // @grant        none
 // ==/UserScript==
 
@@ -277,6 +279,7 @@
                 const colIndex = colNumber - 1;
                 if (colIndex === rowInfo.totalColIndex ||
                     colIndex === baseHeaderNames.length ||
+                    finalHeaders[colIndex] === 'Vendas' ||
                     colIndex >= baseHeaderNames.length + 1 + extraColumnsArray.length) {
                     cell.numFmt = '#,##0.00" €"';
                 } else if (colIndex > baseHeaderNames.length && colIndex < baseHeaderNames.length + 1 + extraColumnsArray.length) {
