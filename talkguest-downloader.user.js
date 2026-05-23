@@ -327,7 +327,8 @@
 
         const totalsRow = worksheet.addRow(totalsValues);
         for (let colIndex = 0; colIndex < finalHeaders.length; colIndex++) {
-            if (totalsValues[colIndex] && typeof totalsValues[colIndex].result === 'number') {
+            if (typeof totalsValues[colIndex] === 'number' ||
+                (totalsValues[colIndex] && typeof totalsValues[colIndex].result === 'number')) {
                 totalsRow.getCell(colIndex + 1).numFmt = '#,##0.00" €"';
             }
         }
