@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Talkguest Table Downloader
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Download reservations table to XLSX with formulas
 // @author       You
 // @match        https://owner.talkguest.com/Bookings/OwnerArea.aspx*
